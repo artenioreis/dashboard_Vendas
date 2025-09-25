@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Dashboard Vendas & Compras</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 16px; }
+      .kpis { display:flex; gap:12px; margin-bottom:18px; }
+      .kpi { padding:12px; border-radius:8px; background:#f7f7f7; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+      .charts { display:flex; flex-direction:column; gap:18px; }
+      table { border-collapse:collapse; width:100%; }
+      th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+    </style>
+  </head>
+  <body>
+    <h1>Dashboard de Vendas e Compras</h1>
+    <p>Período: {{ start_date }} — {{ end_date }}</p>
+
+    <div class="kpis">
+      <div class="kpi"><strong>Total Vendas</strong><div>R$ {{ "{:,.2f}".format(total_vendas) }}</div></div>
+      <div class="kpi"><strong>Total Compras</strong><div>R$ {{ "{:,.2f}".format(total_compras) }}</div></div>
+      <div class="kpi"><strong>Margem</strong><div>R$ {{ "{:,.2f}".format(margem) }}</div></div>
+      {% if top_customer %}
+      <div class="kpi"><strong>Cliente Top</strong><div>{{ top_customer['Nome'] }} — R$ {{ "{:,.2f}".format(top_customer['total_gasto']) }}</div></div>
+      {% endif %}
+    </div>
+
+    <div class="charts">
+      <div id="prod_plot">{{ prod_plot|safe }}</div>
+      <div id="month_plot">{{ month_plot|safe }}</div>
+    </div>
+
+    <h2>Top produtos</h2>
+    <table>
+      <thead><tr><th>Produto</th><th>Qtd Vendida</th><th>Receita</th></tr></thead>
+      <tbody>
+        {% for p in top_products %}
+          <tr><td>{{ p['produto'] }}</td><td>{{ p['qtd_vendida'] }}</td><td>R$ {{ "{:,.2f}".format(p['receita']) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </body>
+</html>
