@@ -1,0 +1,145 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard de Vendas</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background-color: #f4f6f8;
+        }
+        h1 { text-align: center; }
+        .chart-container { 
+            width: 80%; 
+            margin: 30px auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 12px;
+            box-shadow: 0px 2px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 Dashboard de Vendas</h1>
+
+    <!-- Gráfico 1: Totais Mensais -->
+    <div class="chart-container">
+        <h2>Totais Mensais</h2>
+        <canvas id="chartMensal"></canvas>
+    </div>
+
+    <!-- Gráfico 2: Evolução das Vendas -->
+    <div class="chart-container">
+        <h2>Evolução das Vendas (Linha do Tempo)</h2>
+        <canvas id="chartLinha"></canvas>
+    </div>
+
+    <!-- Gráfico 3: Cliente que mais comprou -->
+    <div class="chart-container">
+        <h2>Cliente que mais comprou</h2>
+        <canvas id="chartClientes"></canvas>
+    </div>
+
+    <script>
+        // ==============================
+        // 1) Carregar Totais Mensais
+        // ==============================
+        async function carregarTotaisMensais() {
+            const response = await fetch('/totais-mensais');
+            const data = await response.json();
+
+            const labels = data.map(item => `${item.ano}-${String(item.mes).padStart(2, '0')}`);
+            const vendas = data.map(item => item.total_vendas);
+            const compras = data.map(item => item.total_compras);
+
+            new Chart(document.getElementById('chartMensal'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Vendas', data: vendas, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+                        { label: 'Compras', data: compras, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                    animation: { duration: 1200, easing: 'easeOutQuart' }
+                }
+            });
+        }
+
+        // ==============================
+        // 2) Evolução das Vendas (Linha)
+        // ==============================
+        async function carregarEvolucaoVendas() {
+            const response = await fetch('/serie-diaria');
+            const data = await response.json();
+
+            const labels = data.map(item => item.data);
+            const valores = data.map(item => item.total_vendas);
+
+            new Chart(document.getElementById('chartLinha'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Vendas Diárias',
+                        data: valores,
+                        borderColor: 'rgba(54, 162, 235, 0.9)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: true } },
+                    animation: { duration: 1200, easing: 'easeOutQuart' },
+                    scales: {
+                        x: { title: { display: true, text: 'Data' } },
+                        y: { title: { display: true, text: 'Valor' } }
+                    }
+                }
+            });
+        }
+
+        // ==============================
+        // 3) Cliente que mais comprou
+        // ==============================
+        async function carregarClienteTop() {
+            const response = await fetch('/cliente-top');
+            const data = await response.json();
+
+            const top5 = data.slice(0, 5);
+            const labels = top5.map(item => item.Razao_Social);
+            const valores = top5.map(item => item.total_gasto);
+
+            new Chart(document.getElementById('chartClientes'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Total Gasto',
+                        data: valores,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    animation: { duration: 1200, easing: 'easeOutBounce' }
+                }
+            });
+        }
+
+        carregarTotaisMensais();
+        carregarEvolucaoVendas();
+        carregarClienteTop();
+    </script>
+</body>
+</html>

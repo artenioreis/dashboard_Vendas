@@ -1,56 +1,104 @@
 # app.py
-import os
-from flask import Flask, render_template, request
-import pandas as pd
+from flask import Flask, jsonify, render_template
 from sqlalchemy import create_engine, text
-import urllib
 
+# ===============================
+# 1) Inicialização do Flask
+# ===============================
 app = Flask(__name__)
 
-# === Conexão com SQL Server usando seu conn_str ===
+# ===============================
+# 2) Conexão com SQL Server
+# ===============================
+# Usando sqlalchemy para facilitar a execução de SQLs
 conn_str = (
-    'DRIVER={ODBC Driver 18 for SQL Server};'
-    'SERVER=localhost;'
-    'DATABASE=DMD;'
-    'UID=sa;'
-    'PWD=arte171721;'
-    'Encrypt=yes;'
-    'TrustServerCertificate=yes;'
+    "mssql+pyodbc://sa:arte171721@localhost/DMD?"
+    "driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=yes"
 )
+engine = create_engine(conn_str)
 
-# A string precisa ser codificada para uso no SQLAlchemy
-#params = urllib.parse.quote_plus(conn_str)
-#engine = create_engine(f"mssql+pyodbc:///?odbc_connect={params}", fast_executemany=True)
+# ===============================
+# 3) Rota Principal (Frontend)
+# ===============================
+@app.route('/')
+def index():
+    # Renderiza o HTML da pasta templates/index.html
+    return render_template("index.html")
 
-# === Funções para buscar dados ===
-def get_top_products(start_date, end_date, top_n=10):
+
+# ===============================
+# 4) Endpoint: Totais Mensais
+# ===============================
+@app.route('/totais-mensais')
+def totais_mensais():
     sql = text("""
-    SELECT p.Codigo AS produto_id, p.Descricao AS produto,
-           SUM(i.Qtd_Produto) AS qtd_vendida,
-           SUM(i.Qtd_Produto * i.Prc_Unitario) AS receita
-    FROM NFSIT i
-    JOIN PRODU p ON i.Cod_Produto = p.Codigo
-    JOIN NFSCB c ON i.Num_Nota = c.Num_Nota
-    WHERE c.Dat_Emissao BETWEEN :start_date AND :end_date
-    GROUP BY p.Codigo, p.Descricao
-    ORDER BY qtd_vendida DESC
+        SELECT
+            ano,
+            mes,
+            SUM(total_vendas) AS total_vendas,
+            SUM(total_compras) AS total_compras
+        FROM (
+            SELECT
+                YEAR(c.Dat_Emissao) AS ano,
+                MONTH(c.Dat_Emissao) AS mes,
+                SUM(i.Qtd_Produto * i.prc_unitario) AS total_vendas,
+                0 AS total_compras
+            FROM NFSCB c
+            JOIN NFSIT i ON c.Num_nota = i.Num_nota
+            WHERE c.Tip_Saida IN ('V', 'O')
+              AND c.Dat_Emissao BETWEEN :start_date AND :end_date
+            GROUP BY YEAR(c.Dat_Emissao), MONTH(c.Dat_Emissao)
+
+            UNION ALL
+
+            SELECT
+                YEAR(c.Dat_Emissao) AS ano,
+                MONTH(c.Dat_Emissao) AS mes,
+                0 AS total_vendas,
+                SUM(e.Qtd_pedFat * e.Prc_Unitario) AS total_compras
+            FROM NFSCB c
+            JOIN NFEIT e ON c.cod_estabe = e.cod_estabe
+            WHERE c.Dat_Emissao BETWEEN :start_date AND :end_date
+            GROUP BY YEAR(c.Dat_Emissao), MONTH(c.Dat_Emissao)
+        ) AS totais_mensais
+        GROUP BY ano, mes
+        ORDER BY ano, mes;
     """)
-    df = pd.read_sql(sql, engine, params={"start_date": start_date, "end_date": end_date})
-    return df.head(top_n)
 
-def get_top_customer(start_date, end_date):
+    params = {"start_date": "2025-01-01", "end_date": "2025-12-31"}
+    with engine.connect() as conn:
+        result = conn.execute(sql, params)
+        data = [{"ano": int(r.ano), "mes": int(r.mes),
+                 "total_vendas": float(r.total_vendas or 0),
+                 "total_compras": float(r.total_compras or 0)} for r in result]
+    return jsonify(data)
+
+
+# ===============================
+# 5) Endpoint: Série Diária
+# ===============================
+@app.route('/serie-diaria')
+def serie_diaria():
     sql = text("""
-    SELECT c.Cod_Cliente, cl.Nome, SUM(i.Qtd_Produto * i.Prc_Unitario) AS total_gasto
-    FROM NFSIT i
-    JOIN NFSCB c ON i.Num_Nota = c.Num_Nota
-    JOIN CLIENTES cl ON c.Cod_Cliente = cl.Cod_Cliente
-    WHERE c.Dat_Emissao BETWEEN :start_date AND :end_date
-    GROUP BY c.Cod_Cliente, cl.Nome
-    ORDER BY total_gasto DESC
+        SELECT 
+            CONVERT(date, c.Dat_Emissao) AS data,
+            SUM(i.Qtd_Produto * i.Prc_Unitario) AS total_vendas
+        FROM NFSIT i
+        JOIN NFSCB c ON i.Num_Nota = c.Num_Nota
+        WHERE c.Dat_Emissao BETWEEN :start_date AND :end_date
+        GROUP BY CONVERT(date, c.Dat_Emissao)
+        ORDER BY data
     """)
-    df = pd.read_sql(sql, engine, params={"start_date": start_date, "end_date": end_date})
-    return df.iloc[0] if not df.empty else None
 
-def get_monthly_totals(start_date, end_date):
-    sql = text("""
-    SELECT YEAR(c.Dat_Emissa_
+    params = {"start_date": "2025-01-01", "end_date": "2025-12-31"}
+    with engine.connect() as conn:
+        result = conn.execute(sql, params)
+        data = [{"data": str(r.data), "total_vendas": float(r.total_vendas or 0)} for r in result]
+    return jsonify(data)
+
+
+# ===============================
+# 6) Rodar o Flask
+# ===============================
+if __name__ == "__main__":
+    app.run(debug=True)
