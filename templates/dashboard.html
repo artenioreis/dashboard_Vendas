@@ -2,44 +2,113 @@
 <html>
   <head>
     <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Vendas & Compras</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
-      body { font-family: Arial, sans-serif; margin: 16px; }
-      .kpis { display:flex; gap:12px; margin-bottom:18px; }
-      .kpi { padding:12px; border-radius:8px; background:#f7f7f7; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
-      .charts { display:flex; flex-direction:column; gap:18px; }
-      table { border-collapse:collapse; width:100%; }
-      th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+      body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f4f9; }
+      .container { padding: 20px; }
+      h1, h2 { color: #333; }
+
+      /* KPIs com Grid Responsivo */
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .kpi {
+        padding: 16px;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+      }
+      .kpi strong { font-size: 1.1em; color: #555; }
+      .kpi div { font-size: 1.5em; font-weight: bold; color: #007bff; margin-top: 8px; }
+
+      /* Gráficos */
+      .charts {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .chart {
+        background: #ffffff;
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+
+      /* Tabela Responsiva */
+      .table-container { overflow-x: auto; }
+      table { border-collapse: collapse; width: 100%; background: #ffffff; }
+      th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+      th { background-color: #007bff; color: white; }
+
+      /* Media Query para telas menores (ex: celulares) */
+      @media (max-width: 600px) {
+        table, thead, tbody, th, td, tr {
+            display: block;
+        }
+        thead tr {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+        }
+        tr { border: 1px solid #ccc; margin-bottom: 10px; }
+        td {
+            border: none;
+            border-bottom: 1px solid #eee;
+            position: relative;
+            padding-left: 50%;
+        }
+        td:before {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 45%;
+            padding-right: 10px;
+            white-space: nowrap;
+            font-weight: bold;
+        }
+        /* Adiciona os "labels" para cada célula */
+        td:nth-of-type(1):before { content: "Produto"; }
+        td:nth-of-type(2):before { content: "Qtd Vendida"; }
+        td:nth-of-type(3):before { content: "Receita"; }
+      }
     </style>
   </head>
   <body>
-    <h1>Dashboard de Vendas e Compras</h1>
-    <p>Período: {{ start_date }} — {{ end_date }}</p>
+    <div class="container">
+      <h1>Dashboard de Vendas e Compras</h1>
+      <p>Período: {{ start_date }} — {{ end_date }}</p>
 
-    <div class="kpis">
-      <div class="kpi"><strong>Total Vendas</strong><div>R$ {{ "{:,.2f}".format(total_vendas) }}</div></div>
-      <div class="kpi"><strong>Total Compras</strong><div>R$ {{ "{:,.2f}".format(total_compras) }}</div></div>
-      <div class="kpi"><strong>Margem</strong><div>R$ {{ "{:,.2f}".format(margem) }}</div></div>
-      {% if top_customer %}
-      <div class="kpi"><strong>Cliente Top</strong><div>{{ top_customer['Nome'] }} — R$ {{ "{:,.2f}".format(top_customer['total_gasto']) }}</div></div>
-      {% endif %}
+      <div class="kpis">
+        <div class="kpi"><strong>Total Vendas</strong><div>R$ {{ "{:,.2f}".format(total_vendas) }}</div></div>
+        <div class="kpi"><strong>Total Compras</strong><div>R$ {{ "{:,.2f}".format(total_compras) }}</div></div>
+        <div class="kpi"><strong>Margem</strong><div>R$ {{ "{:,.2f}".format(margem) }}</div></div>
+        {% if top_customer %}
+        <div class="kpi"><strong>Cliente Top</strong><div>{{ top_customer['Nome'] }} — R$ {{ "{:,.2f}".format(top_customer['total_gasto']) }}</div></div>
+        {% endif %}
+      </div>
+
+      <div class="charts">
+        <div class="chart" id="prod_plot">{{ prod_plot|safe }}</div>
+        <div class="chart" id="month_plot">{{ month_plot|safe }}</div>
+      </div>
+
+      <h2>Top produtos</h2>
+      <div class="table-container">
+        <table>
+          <thead><tr><th>Produto</th><th>Qtd Vendida</th><th>Receita</th></tr></thead>
+          <tbody>
+            {% for p in top_products %}
+              <tr><td>{{ p['produto'] }}</td><td>{{ p['qtd_vendida'] }}</td><td>R$ {{ "{:,.2f}".format(p['receita']) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-
-    <div class="charts">
-      <div id="prod_plot">{{ prod_plot|safe }}</div>
-      <div id="month_plot">{{ month_plot|safe }}</div>
-    </div>
-
-    <h2>Top produtos</h2>
-    <table>
-      <thead><tr><th>Produto</th><th>Qtd Vendida</th><th>Receita</th></tr></thead>
-      <tbody>
-        {% for p in top_products %}
-          <tr><td>{{ p['produto'] }}</td><td>{{ p['qtd_vendida'] }}</td><td>R$ {{ "{:,.2f}".format(p['receita']) }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
   </body>
 </html>

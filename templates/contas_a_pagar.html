@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Contas a Pagar</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 20px; background-color: #f0f2f5; color: #333; margin: 0;
+        }
+        h1, h2 { text-align: center; color: #1a2c5b; }
+        a { color: #007bff; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
+
+        .nav-container { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; }
+        
+        .search-container {
+            display: flex; justify-content: center; align-items: center;
+            gap: 10px; margin-bottom: 30px;
+        }
+        .search-container input[type="text"] {
+            padding: 10px; border: 1px solid #ccc; border-radius: 6px; width: 300px;
+        }
+        .search-container button {
+            padding: 10px 20px; border: none; background-color: #28a745;
+            color: white; border-radius: 6px; cursor: pointer; font-weight: bold;
+        }
+
+        .kpis-wrapper {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px; margin-bottom: 30px;
+        }
+        .kpi {
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center;
+        }
+        .kpi .label { font-size: 1rem; color: #555; margin-bottom: 8px; }
+        .kpi .value { font-size: 1.8rem; font-weight: bold; color: #dc3545; }
+        .kpi .sub-value { font-size: 0.9rem; color: #777; margin-top: 4px; }
+
+        .charts-wrapper {
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 20px; margin-bottom: 30px;
+        }
+        .chart-container {
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+        }
+        @media (max-width: 900px) { .charts-wrapper { grid-template-columns: 1fr; } }
+
+        .table-container {
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.08); overflow-x: auto;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #f8f9fa; }
+        tbody tr:hover { background-color: #f1f1f1; }
+
+        .loader-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999; transition: opacity 0.5s ease;
+        }
+        .loader-spinner {
+            border: 8px solid #f3f3f3; border-top: 8px solid #dc3545;
+            border-radius: 50%; width: 60px; height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loader-hidden { opacity: 0; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="loader" class="loader-overlay"><div class="loader-spinner"></div></div>
+
+    <h1>📋 Dashboard de Contas a Pagar</h1>
+    <div class="nav-container">
+        <a href="/">Dashboard Geral</a>
+        <a href="/vendas">Vendas</a>
+        <a href="/contas-a-receber">Contas a Receber</a>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="search-input" placeholder="Buscar por fornecedor/favorecido...">
+        <button id="search-button">Buscar</button>
+    </div>
+
+    <div class="kpis-wrapper">
+        <div class="kpi"><div class="label">Valor Total a Pagar</div><div class="value" id="kpi-total-pagar">R$ 0,00</div></div>
+        <div class="kpi"><div class="label">Total de Títulos em Aberto</div><div class="value" id="kpi-titulos-abertos">0</div></div>
+        <div class="kpi"><div class="label">Principal Credor</div><div class="value" id="kpi-credor" style="font-size: 1.4rem;">-</div><div class="sub-value" id="kpi-credor-valor">R$ 0,00</div></div>
+    </div>
+    <div class="charts-wrapper">
+        <div class="chart-container"><h2>Top 5 Maiores Credores</h2><canvas id="chartCredores"></canvas></div>
+        <div class="chart-container"><h2>Contas por Faixa de Vencimento</h2><canvas id="chartFaixaVencimento"></canvas></div>
+    </div>
+    <div class="table-container">
+        <h2>Detalhes dos Títulos em Aberto</h2>
+        <table>
+            <thead><tr><th>Fornecedor/Favorecido</th><th>Vencimento</th><th>Dias em Atraso</th><th>Valor do Saldo (R$)</th></tr></thead>
+            <tbody id="tabela-detalhes"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const loader = document.getElementById('loader');
+        let chartInstances = {};
+        function destroyChart(chartId) { if (chartInstances[chartId]) chartInstances[chartId].destroy(); }
+        function formatCurrency(value) { return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+        async function fetchData() {
+            loader.classList.remove('loader-hidden');
+            const searchTerm = document.getElementById('search-input').value;
+            const urlParams = new URLSearchParams({ search: searchTerm }).toString();
+            try {
+                await Promise.all([
+                    carregarKPIs(urlParams),
+                    carregarTopCredores(urlParams),
+                    carregarFaixaVencimento(urlParams),
+                    carregarTabelaDetalhes(urlParams)
+                ]);
+            } catch (error) { console.error("Falha ao carregar dados:", error); alert("Não foi possível carregar os dados."); }
+            finally { loader.classList.add('loader-hidden'); }
+        }
+
+        async function carregarKPIs(urlParams) {
+            const response = await fetch(`/api/contas-a-pagar/kpis?${urlParams}`); const data = await response.json();
+            document.getElementById('kpi-total-pagar').textContent = formatCurrency(data.total_a_pagar);
+            document.getElementById('kpi-titulos-abertos').textContent = data.titulos_abertos;
+            document.getElementById('kpi-credor').textContent = data.principal_credor || '-';
+            document.getElementById('kpi-credor-valor').textContent = formatCurrency(data.principal_credor_valor);
+        }
+
+        async function carregarTopCredores(urlParams) {
+            const response = await fetch(`/api/contas-a-pagar/top-credores?${urlParams}`); const data = await response.json();
+            destroyChart('chartCredores'); const ctx = document.getElementById('chartCredores').getContext('2d');
+            chartInstances.chartCredores = new Chart(ctx, { type: 'bar', data: { labels: data.map(d => d.credor), datasets: [{ label: 'Valor a Pagar', data: data.map(d => d.saldo), backgroundColor: 'rgba(255, 99, 132, 0.7)' }] }, options: { indexAxis: 'y', responsive: true } });
+        }
+
+        async function carregarFaixaVencimento(urlParams) {
+            const response = await fetch(`/api/contas-a-pagar/divida-por-faixa?${urlParams}`); const data = await response.json();
+            destroyChart('chartFaixaVencimento'); const ctx = document.getElementById('chartFaixaVencimento').getContext('2d');
+            chartInstances.chartFaixaVencimento = new Chart(ctx, { type: 'doughnut', data: { labels: data.map(d => d.faixa), datasets: [{ data: data.map(d => d.saldo), backgroundColor: ['rgba(75, 192, 192, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(255, 159, 64, 0.7)', 'rgba(255, 99, 132, 0.7)', 'rgba(153, 102, 255, 0.7)'] }] }, options: { responsive: true } });
+        }
+        
+        async function carregarTabelaDetalhes(urlParams) {
+            const response = await fetch(`/api/contas-a-pagar/detalhes?${urlParams}`); const data = await response.json();
+            const tbody = document.getElementById('tabela-detalhes');
+            tbody.innerHTML = '';
+            data.forEach(item => {
+                tbody.innerHTML += `<tr>
+                        <td>${item.credor || 'N/A'}</td>
+                        <td>${new Date(item.vencimento).toLocaleDateString('pt-BR')}</td>
+                        <td>${item.dias_atraso}</td>
+                        <td>${item.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    </tr>`;
+            });
+        }
+        document.getElementById('search-button').addEventListener('click', fetchData);
+        document.getElementById('search-input').addEventListener('keypress', e => e.key === 'Enter' && fetchData());
+        document.addEventListener('DOMContentLoaded', () => fetchData());
+    </script>
+</body>
+</html>
